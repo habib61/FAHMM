@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --mem=3500
+#SBATCH --time=3:30:00
+#SBATCH --output=/data/users/qs9f68/HMM/Piet/HMM/log/fahmm_%x_%a.out
+#SBATCH --error=/data/users/qs9f68/HMM/Piet/HMM/log/fahmm_%x_%a.err
+#SBATCH --partition=long
+#SBATCH --array=1-12
+
+ml R/4.1.0-foss-2021a
+
+Rscript /data/users/qs9f68/HMM/Piet/HMM/02_fahmm/06_fahmm.R 
