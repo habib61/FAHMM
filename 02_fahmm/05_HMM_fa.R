@@ -1,21 +1,60 @@
+################################################################################################
+################################################################################################
+################################################################################################
+################################################################################################
+##################### predict the missing timepoints using marginal model#######################
+########submit 04_prd script (sbatch PrdAll) to predict missing timepoints
+################################################################################################
+################################################################################################
+################################################################################################
+################################################################################################
+#########now create a table with predicted values
+
+#setwd("/data/users/qs9f68/HMM/final")
+library(tidyverse)
+#ff                              = read.csv('interim_tables/03_results_noOutlier.csv')
+ff                              = read.csv('../interim_tables/03_results_noOutlier.csv')
+
+List                            = c("T25FWM","HPT9M","PASAT","VOLT2","NBV2","t1gd")
+List2                           = c("T25FWM","HPT9M","PASAT","VOLT2","NBV2","NUMGDT1")
+Listp                           = c("T25FWMp","HPT9Mp","PASATp","VOLT2p","NBV2p","NUMGDT1p")
+for (i in 1:5) {
+  #load(paste('interim_tables/out_',List[i],'_re_pred_MissOnlyF.RData',sep=''))
+  load(paste('../interim_tables/out_',List[i],'_re_pred_MissOnlyF.RData',sep=''))
+    
+  follow$USUBJID              = as.character(follow$USUBJID)
+  follow                      = follow%>%dplyr::select(c("USUBJID","STUDY","DAY",List2[i],"pm"))
+  follow[is.na(follow[,4]),4] = follow$pm[is.na(follow[,4])]
+  follow                      = follow[,1:4]
+  colnames(follow)            = c("USUBJID","STUDY","DAY",Listp[i])
+  ff                          = left_join(ff,follow,by=c("USUBJID","STUDY","DAY"))
+}
+
+#write.csv(ff,file='interim_tables/longitudinal_noOutlier_NoMiss3.csv',row.names = FALSE)
+write.csv(ff,file='../interim_tables/longitudinal_noOutlier_NoMiss3.csv',row.names = FALSE)
+
 ####################################################################################
 ####################################################################################
 ####################################################################################
-#########################FAHMM#####################################################
-#FA on baseline data to find MS dimensions and latent variables(MS composite scores) 
+#########################FA+HMM#####################################################
+#2 step model: FA on baseline data to find the latent variable (MS composite scores) 
 #and predict follw up latent variables and fit HMM
 ####################################################################################
 #########################################################################
 #########################################################################
 ####################################################################################
 
-####baseline data FA analysis
-source("src/01_HMM_FA_functions.R")
+####baseline data FA analysis using the method from our beloved Veronica and copula
+
+#source("/Users/h.ganjgahi/Desktop/HMM/NOMSv2/final/src/FACTOR_CODE_update.R")
+source("../00a_source_scripts/01_HMM_FA_functions.R")
 
 
 options(bitmapType='cairo-png')
 
-base         = read.csv('interim_tables/03_baseline_results.csv')
+#base         = read.csv('interim_tables/03_baseline_results.csv')
+base         = read.csv('../interim_tables/03_baseline_results.csv')
+
 base$NUMGDT1 = sqrt(base$NUMGDT1)
 base$VOLT2   = base$VOLT2^(1/3)
 bb           = base%>%filter(!is.na(PASAT))%>%dplyr::select(c( "EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV2","NUMGDT1","RELAPSE"))
@@ -54,7 +93,8 @@ rownames(l)=colnames(Y)
 l2=l
 l2[result_40$P_star<.5]=0
 
-save(file = 'interim_tables/FA_baseline_Relapse.Rdata',list=c('result_5','result_10','result_20','result_30','result_40','start','Y'))
+#save(file = 'interim_tables/FA_baseline_Relapse.Rdata',list=c('result_5','result_10','result_20','result_30','result_40','start','Y'))
+save(file = '../interim_tables/FA_baseline_Relapse.Rdata',list=c('result_5','result_10','result_20','result_30','result_40','start','Y'))
 
 l=result_40$B
 #order of latent varibales (disability,brain,relapse,Gd)
@@ -65,9 +105,13 @@ lambda=l[,c(7,4,3,2)]
 ################################################################################################
 ################################################################################################
 ########################project the data into MS Modes space and get the composite scores#######
-load('interim_tables/FA_baseline_Relapse.Rdata')
 
-ff            = read.csv('interim_tables/longitudinal_noOutlier_NoMiss3.csv')
+#load('interim_tables/FA_baseline_Relapse.Rdata')
+load('../interim_tables/FA_baseline_Relapse.Rdata')
+
+#ff            = read.csv('interim_tables/longitudinal_noOutlier_NoMiss3.csv')
+ff            = read.csv('../interim_tables/longitudinal_noOutlier_NoMiss3.csv')
+
 #predict the missing number of Gd lesions from the FA model
 ff$NUMGDT1p2  = sqrt((ff$NUMGDT1))
 l             = result_40$B
@@ -96,15 +140,19 @@ yC    = y
 for (i in 1:nT) {
   tmp2 = y[i,]
   if(any(IND[i,])){
+    #tt            = yMean[IND[i,]]+Sigma[IND[i,],!IND[i,]]%*%solve(Sigma[!IND[i,],!IND[i,]])%*%(y[i,!IND[i,]]-yMean[!IND[i,]])
     tt            = Sigma[IND[i,],!IND[i,]]%*%solve(Sigma[!IND[i,],!IND[i,]])%*%(y[i,!IND[i,]])
     tmp2[IND[i,]] = tt
   }
   fC[i,]=tmp%*%tmp2
   yC[i,]=tmp2
+  #fC[i,]=tmp2%*%tmp
 }
-
 ff[,34:37]=fC
-write.csv(ff,'interim_tables/follow_FAhmm_Relapse_ALL.csv',row.names = FALSE) 
+
+
+#write.csv(ff,'interim_tables/follow_FAhmm_Relapse_ALL.csv',row.names = FALSE) 
+write.csv(ff,'../interim_tables/follow_FAhmm_Relapse_ALL.csv',row.names = FALSE) 
 
 
 ################################################################################################
@@ -113,13 +161,15 @@ write.csv(ff,'interim_tables/follow_FAhmm_Relapse_ALL.csv',row.names = FALSE)
 ################################################################################################
 #split the data into discovery and replication samples
 library(tidyverse)
-follow              = read.csv('interim_tables/follow_FAhmm_Relapse_ALL.csv')
+#follow              = read.csv('interim_tables/follow_FAhmm_Relapse_ALL.csv')
+follow              = read.csv('../interim_tables/follow_FAhmm_Relapse_ALL.csv')
+
 followB             = follow%>%group_by(USUBJID)%>%summarise(mV34=mean(V34),mV35=mean(V35),mV36=mean(V36),mV37=mean(V37))
 #run kmeans clustering to find homogenous set of patients
 #some functions
 df2=scale(followB[,2:5])
 wss <- function(k) {
-  kmeans(df2, k, nstart = 30)$tot.withinss
+  kmeans(df2, k, nstart = 30 )$tot.withinss
 }
 
 # Compute and plot wss for k = 1 to k = 20
@@ -145,5 +195,8 @@ RepID      = followB%>%group_by(val)%>%sample_frac(.2,replace = FALSE)%>%dplyr::
 Dis        = follow%>%filter(! USUBJID %in% RepID$USUBJID)
 Rep        = follow%>%filter(USUBJID %in% RepID$USUBJID)
 
-write.csv(Rep[,-c(27,38:43)],'interim_tables/follow_FAhmm_rep.csv',row.names = FALSE)
-write.csv(Dis[,-c(27,38:43)],'interim_tables/follow_FAhmm_Dis.csv',row.names = FALSE)
+
+#write.csv(Rep[,-c(27,38:43)],'interim_tables/follow_FAhmm_rep.csv',row.names = FALSE)
+#write.csv(Dis[,-c(27,38:43)],'interim_tables/follow_FAhmm_Dis.csv',row.names = FALSE)
+write.csv(Rep[,-c(27,38:43)],'../interim_tables/follow_FAhmm_rep.csv',row.names = FALSE)
+write.csv(Dis[,-c(27,38:43)],'../interim_tables/follow_FAhmm_Dis.csv',row.names = FALSE)
