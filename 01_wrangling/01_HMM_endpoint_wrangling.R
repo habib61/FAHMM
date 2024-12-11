@@ -27,32 +27,38 @@ library(lubridate)
 
 # Source function script
 #source("/data/users/qs9f68/HMM/Piet/HMM/00a_source_scripts/00_HMM_wrangling_functions.R")
-source("../00a_source_scripts/00_HMM_wrangling_functions.R")
+source("00a_source_scripts/00_HMM_wrangling_functions.R")
 
 # Load of data ------------------------------------------------------------
 
 # define user
-user <- system("whoami", intern = TRUE)
-#source_saspath <- paste0("/view/", user, "_view/vob/CNOMSANON/anon/anon_2/anon_source/")
-source_saspath <- '/data/ms/unprocessed/clinical/NOMS_Version2_20211022-OXF-ANALYTICS/'
-base <- read_sas(paste0(source_saspath, "base.sas7bdat")) %>% as.data.frame()
-msfc <- read_sas(paste0(source_saspath, "msfc.sas7bdat")) %>% as.data.frame()
-edss <- read_sas(paste0(source_saspath, "edss.sas7bdat")) %>% as.data.frame()
-mri <- read_sas(paste0(source_saspath, "mri.sas7bdat")) %>% as.data.frame()
-sdmt <- read_sas(paste0(source_saspath, "sdmt.sas7bdat")) %>% as.data.frame()
-follow <- read_sas(paste0(source_saspath, "follow.sas7bdat")) %>% as.data.frame()
-cdwevents <- read_sas(paste0(source_saspath, "cdwevents.sas7bdat")) %>% as.data.frame()
 
+#source_saspath <- paste0("/view/", user, "_view/vob/CNOMSANON/anon/anon_2/anon_source/")
+#source_saspath <- '/data/ms/unprocessed/clinical/NOMS_Version2_20211022-OXF-ANALYTICS/'
+#base <- read_sas(paste0(source_saspath, "base.sas7bdat")) %>% as.data.frame()
+#msfc <- read_sas(paste0(source_saspath, "msfc.sas7bdat")) %>% as.data.frame()
+#edss <- read_sas(paste0(source_saspath, "edss.sas7bdat")) %>% as.data.frame()
+#mri <- read_sas(paste0(source_saspath, "mri.sas7bdat")) %>% as.data.frame()
+#sdmt <- read_sas(paste0(source_saspath, "sdmt.sas7bdat")) %>% as.data.frame()
+#follow <- read_sas(paste0(source_saspath, "follow.sas7bdat")) %>% as.data.frame()
+#cdwevents <- read_sas(paste0(source_saspath, "cdwevents.sas7bdat")) %>% as.data.frame()
+
+
+base=read.csv('../data/base.csv')
+msfc=read.csv('../data/fcs_pasat.csv') %>% rename(DATE=fcs_DATE, DAY=fcs_DAY, PASAT=PASAT3)
+edss=read.csv('../data/edss.csv')
+mri=read.csv('../data/mri.csv') %>% rename(DATE=mri_DATE, DAY=mri_DAY)
+relapse = read.csv('../data/00_results.csv')
 # Load in previously wrangled data
 #relapse <- read_csv("/funstorage/NSGDD_MS_MRI/HMM/interim_tables/00_results.csv", show_col_types = F) %>% as.data.frame()
 
 #relapse <- read_csv("/data/users/qs9f68/HMM/Piet/HMM/interim_tables/00_results.csv", col_types = cols('c','c','D','D','i','i','f','D','i','f','f','f','f')) %>% as.data.frame()
 
-relapse <- read_csv("../interim_tables/00_results.csv", col_types = cols('c','c','D','D','i','i','f','D','i','f','f','f','f')) %>% as.data.frame()
+#relapse <- read_csv("../interim_tables/00_results.csv", col_types = cols('c','c','D','D','i','i','f','D','i','f','f','f','f')) %>% as.data.frame()
 
 # studies to include
-studies <- c("CFTY720D2201", "CFTY720D2301","CFTY720D2302", "CFTY720D2309", "CFTY720D2312",
-             "CFTY720D2306", "CBAF312A2304", "COMB157G2301", "COMB157G2302")
+#studies <- c("CFTY720D2201", "CFTY720D2301","CFTY720D2302", "CFTY720D2309", "CFTY720D2312",
+#             "CFTY720D2306", "CBAF312A2304", "COMB157G2301", "COMB157G2302")
 
 # Concatenating to one baseline and attach follow-up visits ---------------
 
@@ -62,12 +68,12 @@ studies <- c("CFTY720D2201", "CFTY720D2301","CFTY720D2302", "CFTY720D2309", "CFT
 # - Remove multiple observations on one date (keeping worst EDSS)
 # - Only non-missing EDSS observations are kept
 edss_mod <- edss %>%
-  filter(DAY <= 1, !is.na(EDSS), STUDY %in% studies) %>%
-  select(c(USUBJID, STUDY, DATE, DAY, EDSS)) %>%
+  filter(DAY <= 1, !is.na(EDSS)) %>%
+  select(c(USUBJID, STUDYID, DATE, DAY, EDSS)) %>%
   arrange(USUBJID, desc(DAY)) %>%
   filter(!duplicated(.$USUBJID)) %>%
-  bind_rows(., edss[which((edss$DAY > 1) & (!is.na(edss$EDSS)) & (edss$STUDY %in% studies)), 
-                    c("USUBJID", "STUDY", "DATE", "DAY", "EDSS")]) %>%
+  bind_rows(., edss[which((edss$DAY > 1) & (!is.na(edss$EDSS))), 
+                    c("USUBJID", "STUDYID", "DATE", "DAY", "EDSS")]) %>%
   arrange(USUBJID, DATE, desc(EDSS)) %>%
   filter(!duplicated(.[c("USUBJID", "DATE")])) %>%
   mutate(DAY = ifelse(DAY <= 1, 1, DAY))
@@ -87,7 +93,7 @@ edss_month <- data.table::foverlaps(edss_mod, mcotmp, by.x = c('DAY', 'DAYTMP'),
   as.data.frame() %>%
   rename(MONTH = Month) %>%
   mutate(MONTH = ifelse(DAY == 1, -1, MONTH)) %>%
-  select(c(USUBJID, STUDY, DATE, DAY, target, MONTH, EDSS))
+  select(c(USUBJID, STUDYID, DATE, DAY, target, MONTH, EDSS))
 
 # - Only one observation per month is kept, eliminate multiple observations
 #   per month by keeping the once closest to the target date
@@ -104,12 +110,12 @@ edss_month <- edss_month %>%
 # - Only non-missing T25FWM observations are kept
 # - rename DATE column for later
 t25fw_mod <- msfc %>%
-  select(c(USUBJID, STUDY, DATE, DAY, T25FWM)) %>%
-  filter(!is.na(DAY), DAY <= 1, !is.na(T25FWM), STUDY %in% studies) %>%
+  select(c(USUBJID, STUDYID, DATE, DAY, T25FWM))%>%
+  filter(!is.na(DAY), DAY <= 1, !is.na(T25FWM)) %>%
   arrange(USUBJID, desc(DAY)) %>%
   filter(!duplicated(.$USUBJID)) %>%
-  bind_rows(., msfc[which((msfc$DAY > 1) & (!is.na(msfc$T25FWM)) & (msfc$STUDY %in% studies) & (!is.na(msfc$DAY))), 
-                    c("USUBJID", "STUDY", "DATE", "DAY", "T25FWM")]) %>%
+  bind_rows(., msfc[which((msfc$DAY > 1) & (!is.na(msfc$T25FWM)) & (!is.na(msfc$DAY))), 
+                    c("USUBJID", "STUDYID", "DATE", "DAY", "T25FWM")]) %>%
   arrange(USUBJID, DATE, desc(T25FWM)) %>%
   filter(!duplicated(.[c("USUBJID", "DATE")])) %>%
   rename(T25DAY = DAY) %>%
@@ -123,12 +129,12 @@ t25fw_mod <- msfc %>%
 # - Only non-missing HPT9M observations are kept
 # - rename DATE column for later
 hpt9_mod <- msfc %>%
-  select(c(USUBJID, STUDY, DATE, DAY, HPT9M)) %>%
-  filter(!is.na(DAY), DAY <= 1, !is.na(HPT9M), STUDY %in% studies) %>%
+  select(c(USUBJID, STUDYID, DATE, DAY, HPT9M)) %>%
+  filter(!is.na(DAY), DAY <= 1, !is.na(HPT9M)) %>%
   arrange(USUBJID, desc(DAY)) %>%
   filter(!duplicated(.$USUBJID)) %>%
-  bind_rows(., msfc[which((msfc$DAY > 1) & (!is.na(msfc$HPT9M)) & (msfc$STUDY %in% studies) & (!is.na(msfc$DAY))), 
-                    c("USUBJID", "STUDY", "DATE", "DAY", "HPT9M")]) %>%
+  bind_rows(., msfc[which((msfc$DAY > 1) & (!is.na(msfc$HPT9M)) &  (!is.na(msfc$DAY))), 
+                    c("USUBJID", "STUDYID", "DATE", "DAY", "HPT9M")]) %>%
   arrange(USUBJID, DATE, desc(HPT9M)) %>%
   filter(!duplicated(.[c("USUBJID", "DATE")])) %>%
   rename(HPTDAY = DAY) %>%
@@ -142,12 +148,12 @@ hpt9_mod <- msfc %>%
 # - Only non-missing PASAT observations are kept
 # - rename DATE column for later
 pasat_mod <- msfc %>%
-  select(c(USUBJID, STUDY, DATE, DAY, PASAT)) %>%
-  filter(!is.na(DAY), DAY <= 1, !is.na(PASAT), STUDY %in% studies) %>%
+  select(c(USUBJID, STUDYID, DATE, DAY, PASAT)) %>%
+  filter(!is.na(DAY), DAY <= 1, !is.na(PASAT)) %>%
   arrange(USUBJID, desc(DAY)) %>%
   filter(!duplicated(.$USUBJID)) %>%
-  bind_rows(., msfc[which((msfc$DAY > 1) & (!is.na(msfc$PASAT)) & (msfc$STUDY %in% studies) & (!is.na(msfc$DAY))), 
-                    c("USUBJID", "STUDY", "DATE", "DAY", "PASAT")]) %>%
+  bind_rows(., msfc[which((msfc$DAY > 1) & (!is.na(msfc$PASAT)) & (!is.na(msfc$DAY))), 
+                    c("USUBJID", "STUDYID", "DATE", "DAY", "PASAT")]) %>%
   arrange(USUBJID, DATE, PASAT) %>%
   filter(!duplicated(.[c("USUBJID", "DATE")])) %>%
   rename(PASATDAY = DAY) %>%
@@ -160,16 +166,16 @@ pasat_mod <- msfc %>%
 # - Remove multiple observations on one date
 # - rename DATE column for later
 mri_mod <- mri %>%
-  dplyr::select(c(USUBJID, STUDY, DATE, DAY, NUMGDT1, VOLT2)) %>%
-  filter(DAY <= 1, STUDY %in% studies, !is.na(DAY)) %>%
+  dplyr::select(c(USUBJID, STUDYID, DATE, DAY, NUMGDT1, VOLT2,NBV)) %>%
+  filter(DAY <= 1, !is.na(DAY)) %>%
   arrange(USUBJID, desc(DAY)) %>%
   filter(!duplicated(.$USUBJID)) %>%
-  bind_rows(., mri[which((mri$DAY > 1) & (mri$USUBJID != "") & (mri$STUDY %in% studies)), 
-                   c("USUBJID", "STUDY", "DATE", "DAY", "NUMGDT1", "VOLT2")]) %>%
+  bind_rows(., mri[which((mri$DAY > 1) & (mri$USUBJID != "") ), 
+                   c("USUBJID", "STUDYID", "DATE", "DAY", "NUMGDT1", "VOLT2","NBV")]) %>%
   arrange(USUBJID, DATE) %>% 
   filter(!duplicated(.[c("USUBJID", "DATE")])) %>%
   rename(MRIDT = DATE, MRIDAY = DAY) %>%
-  select(c(USUBJID, MRIDT, MRIDAY, NUMGDT1, VOLT2)) %>%
+  select(c(USUBJID, MRIDT, MRIDAY, NUMGDT1, VOLT2, NBV)) %>%
   mutate(MRIDAY = ifelse(MRIDAY <= 1, 1, MRIDAY))
 
 # t25fw_edss_map: table containg mapping of t25fw data to edss observations
@@ -245,6 +251,7 @@ cdwevents_mod <- cdwevents %>%
 # - Use previous *_mod tables and *_edss_map tables to merge everything
 # - Merge the PIRA flag on top of the observations using cdwevents_mod
 # - Keep MRIDT as its used later for merging addition MRI data
+
 df <- edss_month %>%
   merge(., t25fw_edss_map, by = c("USUBJID", "DAY"), all.x = T) %>%
   merge(., hpt9_edss_map, by = c("USUBJID", "DAY"), all.x = T) %>%
@@ -254,10 +261,23 @@ df <- edss_month %>%
   merge(., hpt9_mod, by = c("USUBJID", "HPTDAY"), all.x = T) %>%
   merge(., pasat_mod, by = c("USUBJID", "PASATDAY"), all.x = T) %>%
   merge(., mri_mod, by = c("USUBJID", "MRIDAY"), all.x = T) %>%
-  select(c(USUBJID, STUDY, MRIDT, DATE, DAY, MONTH, EDSS, T25FWM, HPT9M, PASAT, NUMGDT1, VOLT2)) %>%
-  merge(., cdwevents_mod[c("USUBJID", "ONSTDAY", "PIRAFLG")], by.x = c("USUBJID", "DAY"), by.y = c("USUBJID", "ONSTDAY"), all.x = T) %>%
-  mutate(PIRAFLG = ifelse(is.na(PIRAFLG), 0, 1)) %>%
+  select(c(USUBJID, STUDYID, MRIDT, DATE, DAY, MONTH, EDSS, T25FWM, HPT9M, PASAT, NUMGDT1, VOLT2,NBV)) %>%
   arrange(USUBJID, DATE)
+
+
+#df <- edss_month %>%
+#  merge(., t25fw_edss_map, by = c("USUBJID", "DAY"), all.x = T) %>%
+#  merge(., hpt9_edss_map, by = c("USUBJID", "DAY"), all.x = T) %>%
+#  merge(., pasat_edss_map, by = c("USUBJID", "DAY"), all.x = T) %>%
+#  merge(., mri_edss_map, by = c("USUBJID", "DAY"), all.x = T) %>%
+#  merge(., t25fw_mod, by.x = c("USUBJID", "T25DAY"), all.x = T) %>%
+#  merge(., hpt9_mod, by = c("USUBJID", "HPTDAY"), all.x = T) %>%
+#  merge(., pasat_mod, by = c("USUBJID", "PASATDAY"), all.x = T) %>%
+#  merge(., mri_mod, by = c("USUBJID", "MRIDAY"), all.x = T) %>%
+#  select(c(USUBJID, STUDY, MRIDT, DATE, DAY, MONTH, EDSS, T25FWM, HPT9M, PASAT, NUMGDT1, VOLT2)) %>%
+#  merge(., cdwevents_mod[c("USUBJID", "ONSTDAY", "PIRAFLG")], by.x = c("USUBJID", "DAY"), by.y = c("USUBJID", "ONSTDAY"), all.x = T) %>%
+#  mutate(PIRAFLG = ifelse(is.na(PIRAFLG), 0, 1)) %>%
+#  arrange(USUBJID, DATE)
 
 # df_wrel: Table with the relapse info for each observation (addition to df)
 # - use AddRelapseInfo to check whether observation was measured during a relapse

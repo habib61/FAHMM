@@ -47,7 +47,7 @@ write.csv(ff,file='../interim_tables/longitudinal_noOutlier_NoMiss3.csv',row.nam
 ####baseline data FA analysis using the method from our beloved Veronica and copula
 
 #source("/Users/h.ganjgahi/Desktop/HMM/NOMSv2/final/src/FACTOR_CODE_update.R")
-source("../00a_source_scripts/01_HMM_FA_functions.R")
+source("00a_source_scripts/01_HMM_FA_functions.R")
 
 
 options(bitmapType='cairo-png')
@@ -57,7 +57,7 @@ base         = read.csv('../interim_tables/03_baseline_results.csv')
 
 base$NUMGDT1 = sqrt(base$NUMGDT1)
 base$VOLT2   = base$VOLT2^(1/3)
-bb           = base%>%filter(!is.na(PASAT))%>%dplyr::select(c( "EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV2","NUMGDT1","RELAPSE"))
+bb           = base%>%filter(!is.na(PASAT))%>%dplyr::select(c( "EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE"))
 
 Y            = scale(bb)
 K            = ncol(Y)

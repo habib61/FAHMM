@@ -20,7 +20,7 @@ df               = rbind(SubRel,SubNoRel)
 baseline <- df %>%
   rowwise() %>%
   mutate(MISSFULL = all(is.na(EDSS), is.na(T25FWM), is.na(HPT9M), is.na(PASAT), 
-                        is.na(NUMGDT1), is.na(VOLT2), is.na(NBV2))) %>%
+                        is.na(NUMGDT1), is.na(VOLT2), is.na(NBV))) %>%
   filter(MISSFULL == FALSE) %>%
   as.data.frame() %>%
   group_by(USUBJID) %>%
@@ -28,7 +28,7 @@ baseline <- df %>%
   as.data.frame() %>%
   filter(MONTH == -1) %>%
   rowwise() %>%
-  mutate(MISSING = any(is.na(EDSS), is.na(T25FWM), is.na(HPT9M), is.na(NUMGDT1), is.na(VOLT2), is.na(NBV2))) %>%
+  mutate(MISSING = any(is.na(EDSS), is.na(T25FWM), is.na(HPT9M), is.na(NUMGDT1), is.na(VOLT2), is.na(NBV))) %>%
   as.data.frame() %>%
   filter(n > 1, MISSING == F) %>%
   select(-c(MISSFULL, n, MISSING))
