@@ -4,9 +4,8 @@
 ####################################################################################
 library(tidyverse)
 library(lme4)
-
-#follow           = read.csv('/data/users/qs9f68/HMM/Piet/HMM/interim_tables/02_results.csv') 
-follow           = read.csv('../interim_tables/02_results.csv') 
+# 01_results is as same as 02_results from NO.MS
+follow           = read.csv('interim_tables/01_results.csv') 
 ####below is for defining baseline relapse from next 3 months
 relB             = follow%>%group_by(USUBJID)%>%filter(DAY<=100)%>%summarise(rel=sum(RELAPSE))%>%filter(rel>0)
 #split the follow up table into two parts: subjects with baseline Relapse and not
@@ -47,9 +46,9 @@ df_mod <- df %>%
          VOLT2 = VOLT2^(1/3)) %>%
   filter(deltaM < 41)
 
-baseline%>%group_by(STUDY)%>%summarise(N=length(USUBJID))
+baseline%>%group_by(STUDYID)%>%summarise(N=length(USUBJID))
 #write.csv(baseline,'/data/users/qs9f68/HMM/Piet/HMM/interim_tables/03_baseline_results.csv',row.names = FALSE)
-write.csv(baseline,'../interim_tables/03_baseline_results.csv',row.names = FALSE)
+write.csv(baseline,'interim_tables/03_baseline_results.csv',row.names = FALSE)
 
 ################################################################################################
 ################################################################################################
@@ -63,9 +62,10 @@ write.csv(baseline,'../interim_tables/03_baseline_results.csv',row.names = FALSE
 ######## which removing timepoints with standardised residulas more than 10 
 
 #T25 outliers
-ff           = lmer(T25FWM~YEARS+AGE+SEX+DURFS+RELPST1Y+MSTYPE+RELAPSE+ACTVTRT+(YEARS|USUBJID),data=df_mod,REML = FALSE,control = lmerControl(optimizer ="Nelder_Mead"))
-#in below columns 6,8,11,13,19 are AGE, SEX, DURFS, RELPST1Y and T25FWM respectively  
-row.has.na   = apply(df_mod[,c(6,8,11,13,19)], 1, function(x){any(is.na(x))})
+ff           = lmer(T25FWM~YEARS+AGE+SEX+DURFS+RELPST1Y+MSTYPE+RELAPSE+(YEARS|USUBJID),data=df_mod,REML = FALSE,control = lmerControl(optimizer ="Nelder_Mead"))
+#in below columns 6,8,11,13,19 are AGE, SEX, DURFS, RELPST1Y and T25FWM respectively
+tmp = df_mod%>%select(AGE, SEX, DURFS, RELPST1Y, T25FWM)
+row.has.na   = apply(tmp, 1, function(x){any(is.na(x))})
 #get the standardised residuals and replace the outliers with NA
 df_mod$res = NA
 df_mod$res[!row.has.na]  = residuals(ff,type="pearson", scaled=TRUE)
@@ -73,9 +73,10 @@ Ind=which(abs(df_mod$res)>10)
 df_mod$T25FWM[Ind]=NA
 
 #HPT9M outliers
-ff           = lmer(HPT9M~YEARS+AGE+SEX+DURFS+RELPST1Y+MSTYPE+RELAPSE+ACTVTRT+(YEARS|USUBJID),data=df_mod,REML = FALSE)
+ff           = lmer(HPT9M~YEARS+AGE+SEX+DURFS+RELPST1Y+MSTYPE+RELAPSE+(YEARS|USUBJID),data=df_mod,REML = FALSE)
 #in below columns 6,8,11,13,20 are AGE, SEX, DURFS, RELPST1Y and HPT9M respectively  
-row.has.na   = apply(df_mod[,c(6,8,11,13,20)], 1, function(x){any(is.na(x))})
+tmp = df_mod%>%select(AGE, SEX, DURFS, RELPST1Y, HPT9M)
+row.has.na   = apply(tmp, 1, function(x){any(is.na(x))})
 #get the standardised residuals and replace the outliers with NA
 df_mod$res = NA
 df_mod$res[!row.has.na]  = residuals(ff,type="pearson", scaled=TRUE)
@@ -83,9 +84,10 @@ Ind=which(abs(df_mod$res)>10)
 df_mod$HPT9M[Ind]=NA
 
 #T2 Volume: Outliers
-ff           = lmer(VOLT2~YEARS+AGE+SEX+DURFS+RELPST1Y+MSTYPE+RELAPSE+ACTVTRT+(YEARS|USUBJID),data=df_mod,REML = FALSE,control = lmerControl(optimizer ="Nelder_Mead"))
-#in below columns 6,8,11,13,23 are AGE, SEX, DURFS, RELPST1Y and VOLT2 respectively  
-row.has.na   = apply(df_mod[,c(6,8,11,13,23)], 1, function(x){any(is.na(x))})
+ff           = lmer(VOLT2~YEARS+AGE+SEX+DURFS+RELPST1Y+MSTYPE+RELAPSE+(YEARS|USUBJID),data=df_mod,REML = FALSE,control = lmerControl(optimizer ="Nelder_Mead"))
+#in below columns 6,8,11,13,23 are AGE, SEX, DURFS, RELPST1Y and VOLT2 respectively 
+tmp = df_mod%>%select(AGE, SEX, DURFS, RELPST1Y, VOLT2)
+row.has.na   = apply(tmp, 1, function(x){any(is.na(x))})
 #get the standardise residuals and replace the outliers with the predicted value
 df_mod$res=NA
 df_mod$res[!row.has.na]  = residuals(ff,type="pearson", scaled=TRUE)
@@ -95,4 +97,4 @@ df_mod$VOLT2[Ind]=NA
 
 
 #write.csv(df_mod,'/data/users/qs9f68/HMM/Piet/HMM/interim_tables/03_results_noOutlier.csv',row.names = FALSE)
-write.csv(df_mod,'../interim_tables/03_results_noOutlier.csv',row.names = FALSE)
+write.csv(df_mod,'interim_tables/03_results_noOutlier.csv',row.names = FALSE)

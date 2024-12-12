@@ -26,39 +26,17 @@ library(lubridate)
 # Functions ---------------------------------------------------------------
 
 # Source function script
-#source("/data/users/qs9f68/HMM/Piet/HMM/00a_source_scripts/00_HMM_wrangling_functions.R")
-source("00a_source_scripts/00_HMM_wrangling_functions.R")
+source("FAHMM_Roche/00a_source_scripts/00_HMM_wrangling_functions.R")
 
 # Load of data ------------------------------------------------------------
+base=read.csv('data/base.csv')
+msfc=read.csv('data/fcs_pasat.csv')%>%rename(DATE=fcs_DATE, DAY=fcs_DAY, PASAT=PASAT3)%>%filter(!(is.na(T25FWM)& is.na(HPT9M) & is.na(PASAT)))
+edss=read.csv('data/edss.csv')
+mri=read.csv('data/mri.csv') %>% rename(DATE=mri_DATE, DAY=mri_DAY)
 
-# define user
-
-#source_saspath <- paste0("/view/", user, "_view/vob/CNOMSANON/anon/anon_2/anon_source/")
-#source_saspath <- '/data/ms/unprocessed/clinical/NOMS_Version2_20211022-OXF-ANALYTICS/'
-#base <- read_sas(paste0(source_saspath, "base.sas7bdat")) %>% as.data.frame()
-#msfc <- read_sas(paste0(source_saspath, "msfc.sas7bdat")) %>% as.data.frame()
-#edss <- read_sas(paste0(source_saspath, "edss.sas7bdat")) %>% as.data.frame()
-#mri <- read_sas(paste0(source_saspath, "mri.sas7bdat")) %>% as.data.frame()
-#sdmt <- read_sas(paste0(source_saspath, "sdmt.sas7bdat")) %>% as.data.frame()
-#follow <- read_sas(paste0(source_saspath, "follow.sas7bdat")) %>% as.data.frame()
-#cdwevents <- read_sas(paste0(source_saspath, "cdwevents.sas7bdat")) %>% as.data.frame()
-
-
-base=read.csv('../data/base.csv')
-msfc=read.csv('../data/fcs_pasat.csv') %>% rename(DATE=fcs_DATE, DAY=fcs_DAY, PASAT=PASAT3)
-edss=read.csv('../data/edss.csv')
-mri=read.csv('../data/mri.csv') %>% rename(DATE=mri_DATE, DAY=mri_DAY)
-relapse = read.csv('../data/00_results.csv')
 # Load in previously wrangled data
-#relapse <- read_csv("/funstorage/NSGDD_MS_MRI/HMM/interim_tables/00_results.csv", show_col_types = F) %>% as.data.frame()
+relapse = read.csv('data/00_results.csv')
 
-#relapse <- read_csv("/data/users/qs9f68/HMM/Piet/HMM/interim_tables/00_results.csv", col_types = cols('c','c','D','D','i','i','f','D','i','f','f','f','f')) %>% as.data.frame()
-
-#relapse <- read_csv("../interim_tables/00_results.csv", col_types = cols('c','c','D','D','i','i','f','D','i','f','f','f','f')) %>% as.data.frame()
-
-# studies to include
-#studies <- c("CFTY720D2201", "CFTY720D2301","CFTY720D2302", "CFTY720D2309", "CFTY720D2312",
-#             "CFTY720D2306", "CBAF312A2304", "COMB157G2301", "COMB157G2302")
 
 # Concatenating to one baseline and attach follow-up visits ---------------
 
@@ -244,8 +222,8 @@ mri_edss_map <- mri_mod %>%
 
 # cdwevents_mod: table containing the 6-month confirmed PIRA events
 # - Subset cdwevents to 6 month confirmed PIRA events
-cdwevents_mod <- cdwevents %>%
-  filter(DISEVENT == "T6MCDW", PIRAFLG == "Yes", STUDY %in% studies)
+#cdwevents_mod <- cdwevents %>%
+#  filter(DISEVENT == "T6MCDW", PIRAFLG == "Yes", STUDY %in% studies)
 
 # df: Table containing all endpoints and a flag for a PIRA onset
 # - Use previous *_mod tables and *_edss_map tables to merge everything
@@ -285,7 +263,7 @@ df_wrel <- AddRelapseInfo(df, relapse)
 
 # df_wtrt: Table containing the treatment at time of observation (addition to df_wrel)
 # - use AddTRTInfo to check what treatment patient was on during observation
-df_wtrt <- AddTRTInfo(df_wrel, follow)
+#df_wtrt <- AddTRTInfo(df_wrel, follow)
 
 # df_final: final table which includes demographic data
 # - merge demographic data on table
@@ -293,37 +271,27 @@ df_wtrt <- AddTRTInfo(df_wrel, follow)
 # - offset AGE and DURFS longitudinally (AGELG, DURFSLG respectively)
 # - Impute a longitudinal MS phenotype (MSTYPELG) by the condition of someone having
 #   a PIRA event and a EDSS >= 3 (captured in df_spmsonset constructed below)
-df_spmsonset <- df_wtrt %>%
-  filter(PIRAFLG == 1, EDSS >= 3) %>%
-  arrange(USUBJID, MONTH) %>%
-  filter(!duplicated(.$USUBJID)) %>%
-  rename(PIRAMONTH = MONTH) %>%
-  select(c(USUBJID, PIRAMONTH))
+#df_spmsonset <- df_wtrt %>%
+#  filter(PIRAFLG == 1, EDSS >= 3) %>%
+#  arrange(USUBJID, MONTH) %>%
+#  filter(!duplicated(.$USUBJID)) %>%
+#  rename(PIRAMONTH = MONTH) %>%
+#  select(c(USUBJID, PIRAMONTH))
 
-df_final <- df_wtrt %>%
+df_final <- df_wrel %>%
   merge(., base[c("USUBJID", "SEX", "AGE", "MSTYPE", "DURFS", "RELPST1Y", "RELPST2Y")], by = "USUBJID", all.x = T) %>%
-  merge(., df_spmsonset, by = c("USUBJID"), all.x = T) %>%
-  mutate(ACTVTRT = ifelse(ARM %in% c("No treatment", "Placebo"), 0, 1),
-         YEARS = DAY/365.25,
-         DURFS = plyr::mapvalues(DURFS, c("[0,2)", "[2,5)", "[5,10)", "[10,30)", "[30,50)"), c("1", "3.5", "7.5", "20", "40")),
-         DURFS = as.numeric(DURFS),
+  mutate(YEARS = DAY/365.25,
          DURFSLG = DURFS + YEARS,
-         AGELG = floor(AGE + YEARS),
-         MSTYPELG = case_when(
-           MSTYPE == "SPMS" ~ "SPMS",
-           MSTYPE == "PPMS" ~ "PPMS",
-           (MSTYPE == "RRMS") & (is.na(PIRAMONTH)) ~ "RRMS",
-           (MSTYPE == "RRMS") & (!is.na(PIRAMONTH)) & (MONTH < PIRAMONTH) ~ "RRMS",
-           (MSTYPE == "RRMS") & (!is.na(PIRAMONTH)) & (MONTH >= PIRAMONTH) ~ "SPMS")
+         AGELG = floor(AGE + YEARS)
          ) %>%
   arrange(USUBJID, MONTH) %>%
-  select(c(USUBJID, STUDY, MRIDT, MONTH, DAY, YEARS,
-           AGE, AGELG, SEX, MSTYPE, MSTYPELG, DURFS, DURFSLG, 
+  select(c(USUBJID, STUDYID, MRIDT, MONTH, DAY, YEARS,
+           AGE, AGELG, SEX, MSTYPE, DURFS, DURFSLG, 
            RELPST1Y, RELPST2Y, 
-           PIRAFLG, RELAPSE, ACTVTRT,
+           RELAPSE,
            EDSS, T25FWM, HPT9M, PASAT,
-           NUMGDT1, VOLT2))
+           NUMGDT1, VOLT2,NBV))
 
 # Save table
 #write.csv(df_final, "/data/users/qs9f68/HMM/Piet/HMM/interim_tables/01_results.csv", row.names = F)
-write.csv(df_final, "../interim_tables/01_results.csv", row.names = F)
+write.csv(df_final, "interim_tables/01_results.csv", row.names = F)

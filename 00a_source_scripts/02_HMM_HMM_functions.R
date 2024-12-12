@@ -74,6 +74,26 @@ InitKM_mv <- function(y, K){
   return(init)
 }
 
+InitKM_mv2 = function(y,K,USUBJID,Time){
+  mod1        = kmeans(y,K,nstart = 20,iter.max = 30)
+  while (!mod1$ifault==0) {mod1        = kmeans(y,K,nstart = 20,iter.max = 30,algorithm="MacQueen") }
+  #ll          = order(mod1$centers)
+  ll=mod1
+  init        = list()
+  init$mu     = t(mod1$centers)
+  #init$sigma  = matrix(0,ncol(y),K)
+  init$sigma       = array(0,c(ncol(y),ncol(y),K))
+  for (i in 1:K) {
+    init$sigma[,,i]=cov(y[mod1$cluster==i,])
+  }
+  a=statetable.msm(mod1$cluster,USUBJID)
+  init$A  =a/rowSums(a)
+  init$pi = table(mod1$cluster[Time==0])/length(mod1$cluster[Time==0])
+  #init$A  = t(replicate(K, runif_simplex(K)))
+  #init$pi = runif_simplex(K)
+  return(init)
+}
+
 hmmfilter_dtApp<-function(pi, A, emission){
   
   #initialisation
