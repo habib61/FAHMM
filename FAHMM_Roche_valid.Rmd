@@ -1,0 +1,439 @@
+---
+title: 'FAHMM: Roche Data'
+output:
+  html_document:
+    df_print: paged
+  pdf: default
+  pdf_document: default
+date: "2024-12-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+source('FAHMM_Roche/00a_source_scripts/02_HMM_HMM_functions.R')
+library(ggplot2) 
+library(data.table) 
+library(reshape2)
+library(pheatmap)
+library(RColorBrewer)
+library(qgraph)
+library(tidyverse)
+library(cowplot)
+library(patchwork)
+library(labelled)
+library(gtsummary)
+library(patchwork)
+library(viridis)
+library(ggridges)
+
+```
+## Summarise the model fit
+This is a markdown for replicating new MS classification using ROche data
+
+## MS dimensions
+
+
+```{r}
+load('interim_tables/FA_baseline_Relapse.Rdata')
+l             = result_40$B
+#order of latent varibales (disability,brain,relapse,Gd)
+lambda=l[,c(1,2,3,4)]
+rownames(lambda)=c( "EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE")
+lambda
+```
+## MS dimensions: thresholded
+
+
+```{r}
+load('interim_tables/FA_baseline_Relapse.Rdata')
+l             = result_40$B
+l[result_40$P_star<0.5]=0
+#order of latent varibales (disability,brain,relapse,Gd)
+lambda=l[,c(1,2,3,4)]
+rownames(lambda)=c( "EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE")
+
+colnames(lambda)=c('disability','Asymptomatic','Relapse','brain_damage')
+lambda
+```
+
+## States Mean
+
+
+
+```{r}
+
+follow       = read.csv('interim_tables/follow_FAhmm_Relapse_ALLC.csv')
+follow=follow%>%filter(! USUBJID %in% 'WA21093-208650-1932631')
+follow$VOLT2 = follow$VOLT2^3
+yy           = as.matrix(follow[,c("V32","V33","V34","V35")])
+yy           = scale(yy,center = FALSE,scale = TRUE)
+
+follow  <- follow  %>%
+  mutate(MONTHN = MONTH,
+         MONTHN = ifelse(MONTHN == -1, 0, MONTHN)) %>%
+  group_by(USUBJID) %>% 
+  arrange(MONTHN, .by_group = TRUE) %>% 
+  mutate(deltaM = -lag(MONTHN) + MONTHN) %>% 
+  ungroup() %>%
+  mutate(deltaM = ifelse(is.na(deltaM), 0, deltaM))
+
+Time   = follow$deltaM
+ss     = follow%>%group_by(USUBJID)%>%summarise(s=length(USUBJID))
+seq=ss$s
+
+
+load('interim_tables/hmm_s8_init_clara2_euc.RData')
+hmm_CTDC = hmm_CTDC_clara2_euc
+l = order(hmm_CTDC$mu[1,],decreasing = TRUE)
+hmm_CTDC$mu = hmm_CTDC$mu[,l]
+hmm_CTDC$A  = hmm_CTDC$A[l,l] 
+hmm_CTDC$pi = hmm_CTDC$pi[l]
+hmm_CTDC$sigma = hmm_CTDC$sigma[,,l]
+
+
+Z = ctdthmm_MultSubj_viterbi(hmm_CTDC,yy,seq,Time)
+follow$Z=Z
+table(Z)
+follow$Z=Z
+follow$MS=NA
+follow$MS[Z%in%c(1,2,3)]=1
+follow$MS[Z==4]=2
+follow$MS[Z==5]=3
+follow$MS[Z%in%c(6,7,8)]=4
+
+write.csv(follow, 'interim_tables/follow_FAhmm_Relapse_ALLC_MetaS.csv')
+kk= follow%>%dplyr::select(c( "EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE"))
+spl=split(kk,Z)
+Emp_mu_S9 = sapply(spl,function(x){colMeans(x,na.rm = TRUE)})
+Emp_mu_S9[6,]=Emp_mu_S9[6,]/1000
+
+
+```
+## States mean original 
+```{r}
+round(Emp_mu_S9,2)
+
+```
+## States mean composite
+```{r}
+mu= hmm_CTDC$mu
+row.names(mu)=c('disability','Asymptomatic','Relapse','brain_damage')
+mu
+
+```
+## Transition probability
+```{r}
+AD=hmm_CTDC$A
+AD[AD<.005]=0
+round(AD,4)
+
+```
+## Baseline classification
+
+```{r}
+pi=hmm_CTDC$pi
+round(pi,2)
+```
+## Demographic Summary
+```{r}
+follow$Z=Z
+follow$MS=NA
+follow$MS[Z%in%c(1,2,3)]=1
+follow$MS[Z%in%c(6,7,8)]=4
+follow$MS[Z==4]=4
+follow$MS[Z==5]=5
+ff2<-follow%>%dplyr::select(c("AGELG","SEX","MSTYPE","DURFSLG","RELPST1Y","Z"))%>%tbl_summary(by=Z, missing = "no",
+                                                                                              label = list(AGELG~'Age',SEX~'Gender',MSTYPE~'MS Type',DURFSLG~'Duration from First Symptom',RELPST1Y~"Number of Relapses during past year"),
+                                                                                              type = list(all_continuous() ~ "continuous2", DURFSLG~"continuous2",RELPST1Y~"continuous2"),
+                                                                                              statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})")) %>%modify_header(label ~ "**Variable**")
+ff2
+```
+## Features Summary
+```{r}
+ff3<-follow%>%dplyr::select(c("MSTYPE","EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE","Z"))%>%tbl_summary(by=Z, missing = "no",
+                                                                                                                                  label = list(HPT9M~'Hand Coordination',T25FWM~'Walking Time',VOLT2~'T2 lesion volume',NBV~'Normalised brain volume',NUMGDT1~'Number of T1 Gd lesions'),
+                                                                                                                                  type = list(all_continuous() ~ "continuous2"),
+                                                                                                                                  statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})","({p10}, {p90})")) %>%modify_header(label ~ "**Variable**")
+ff3
+```
+## Demographic Summary Meta state
+```{r}
+follow$Z=Z
+follow$MS=NA
+follow$MS[Z%in%c(1,2,3)]=1
+follow$MS[Z==4]=2
+follow$MS[Z==5]=3
+follow$MS[Z%in%c(6,7,8)]=4
+
+ff2<-follow%>%dplyr::select(c("AGELG","SEX","MSTYPE","DURFSLG","RELPST1Y","MS"))%>%tbl_summary(by=MS, missing = "no",
+                                                                                              label = list(AGELG~'Age',SEX~'Gender',MSTYPE~'MS Type',DURFSLG~'Duration from First Symptom',RELPST1Y~"Number of Relapses during past year"),
+                                                                                              type = list(all_continuous() ~ "continuous2", DURFSLG~"continuous2",RELPST1Y~"continuous2"),
+                                                                                              statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})")) %>%modify_header(label ~ "**Variable**")
+ff2
+```
+## Features Summary Meta State
+```{r}
+ff3<-follow%>%dplyr::select(c("MSTYPE","EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE","MS"))%>%tbl_summary(by=MS, missing = "no",
+                                                                                                                                  label = list(HPT9M~'Hand Coordination',T25FWM~'Walking Time',VOLT2~'T2 lesion volume',NBV~'Normalised brain volume',NUMGDT1~'Number of T1 Gd lesions'),
+                                                                                                                                  type = list(all_continuous() ~ "continuous2"),
+                                                                                                                                  statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})","({p10}, {p90})")) %>%modify_header(label ~ "**Variable**")
+ff3
+```
+## States density plots: baseline original features
+```{r}
+p1<-ggplot(follow, aes(y=as.factor(Z), x=EDSS,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=1) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("EDSS (total score)") +
+  ylab("States")
+
+p2<-ggplot(follow, aes(y=as.factor(Z), x=T25FWM,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=4) +xlim(0,50)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("25-foot times walking test (s)") +
+  ylab("")
+
+p3<-ggplot(follow, aes(y=as.factor(Z), x=HPT9M,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=4) +xlim(0,100)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Hand Coordination (s)") +
+  ylab("")
+
+p4<-ggplot(follow, aes(y=as.factor(Z), x=PASAT,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=3) +xlim(0,60)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("PASAT (correct answers out of 60)") +
+  ylab("")
+
+p5<-ggplot(follow, aes(y=as.factor(Z), x=NBV/1000,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.05) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Normalised Brain Volume (L)") +
+  ylab("States")
+
+p6<-ggplot(follow, aes(y=as.factor(Z), x=VOLT2,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.3) +xlim(NA,5)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("T2 Lesion Volume") +
+  ylab("")
+
+p7<-ggplot(follow, aes(y=as.factor(Z), x=NUMGDT1,  group=as.factor(Z))) +
+  geom_density_ridges(aes(fill = as.factor(Z)), stat = "binline", binwidth = .5, scale = 0.95) +xlim(-1,10)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Number of T1 Gd lesions") +
+  ylab("")
+
+p8<-ggplot(follow, aes(y=as.factor(Z), x=RELAPSE,  group=as.factor(Z))) +
+  geom_density_ridges(aes(fill = as.factor(Z)), stat = "binline", binwidth = .5, scale = 0.95) +xlim(-1,2)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Relapse Occurence") +
+  ylab("")
+
+(p1|p2|p3|p4)/(p5|p6|p7|p8)
+```
+
+## Demographic Summary: Baseline
+```{r}
+baseline =follow%>%filter(DAY==1)
+ff2<-baseline%>%dplyr::select(c("AGE","SEX","MSTYPE","DURFS","RELPST1Y","Z"))%>%tbl_summary(by=Z, missing = "no",
+                                                                                              label = list(AGE~'Age',SEX~'Gender',MSTYPE~'MS Type',DURFS~'Duration from First Symptom',RELPST1Y~"Number of Relapses during past year"),
+                                                                                              type = list(all_continuous() ~ "continuous2", DURFS~"continuous2",RELPST1Y~"continuous2"),
+                                                                                              statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})")) %>%modify_header(label ~ "**Variable**")
+ff2
+```
+
+## Features Summary: Baseline
+```{r}
+ff3<-baseline%>%dplyr::select(c("MSTYPE","EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE","Z"))%>%tbl_summary(by=Z, missing = "no",
+                                                                                                                                  label = list(HPT9M~'Hand Coordination',T25FWM~'Walking Time',VOLT2~'T2 lesion volume',NBV~'Normalised brain volume',NUMGDT1~'Number of T1 Gd lesions'),
+                                                                                                                                  type = list(all_continuous() ~ "continuous2"),
+                                                                                                                                  statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})","({p10}, {p90})")) %>%modify_header(label ~ "**Variable**")
+ff3
+```
+## Demographic Summary: Baseline Meta states
+```{r}
+baseline =follow%>%filter(DAY==1)
+ff2<-baseline%>%dplyr::select(c("AGE","SEX","MSTYPE","DURFS","RELPST1Y","MS"))%>%tbl_summary(by=MS, missing = "no",
+                                                                                              label = list(AGE~'Age',SEX~'Gender',MSTYPE~'MS Type',DURFS~'Duration from First Symptom',RELPST1Y~"Number of Relapses during past year"),
+                                                                                              type = list(all_continuous() ~ "continuous2", DURFS~"continuous2",RELPST1Y~"continuous2"),
+                                                                                              statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})")) %>%modify_header(label ~ "**Variable**")
+ff2
+```
+## Features Summary: Baseline Meta states
+```{r}
+ff3<-baseline%>%dplyr::select(c("MSTYPE","EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV","NUMGDT1","RELAPSE","MS"))%>%tbl_summary(by=MS, missing = "no",
+                                                                                                                                  label = list(HPT9M~'Hand Coordination',T25FWM~'Walking Time',VOLT2~'T2 lesion volume',NBV~'Normalised brain volume',NUMGDT1~'Number of T1 Gd lesions'),
+                                                                                                                                  type = list(all_continuous() ~ "continuous2"),
+                                                                                                                                  statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})","({p10}, {p90})")) %>%modify_header(label ~ "**Variable**")
+ff3
+```
+## Including Plots
+## States density plots: baseline original features
+```{r}
+p1<-ggplot(baseline, aes(y=as.factor(Z), x=EDSS,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=1) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("EDSS (total score)") +
+  ylab("States")
+
+p2<-ggplot(baseline, aes(y=as.factor(Z), x=T25FWM,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=4) +xlim(0,50)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("25-foot times walking test (s)") +
+  ylab("")
+
+p3<-ggplot(baseline, aes(y=as.factor(Z), x=HPT9M,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=4) +xlim(0,100)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Hand Coordination (s)") +
+  ylab("")
+
+p4<-ggplot(baseline, aes(y=as.factor(Z), x=PASAT,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=4) +xlim(0,60)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("PASAT (correct answers out of 60)") +
+  ylab("")
+
+p5<-ggplot(baseline, aes(y=as.factor(Z), x=NBV/1000,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.05) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Normalised Brain Volume (L)") +
+  ylab("States")
+
+p6<-ggplot(baseline, aes(y=as.factor(Z), x=VOLT2,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.3) +xlim(NA,5)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("T2 Lesion Volume") +
+  ylab("")
+
+p7<-ggplot(baseline, aes(y=as.factor(Z), x=NUMGDT1,  group=as.factor(Z))) +
+  geom_density_ridges(aes(fill = as.factor(Z)), stat = "binline", binwidth = .5, scale = 0.95) +xlim(-1,10)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Number of T1 Gd lesions") +
+  ylab("")
+
+p8<-ggplot(baseline, aes(y=as.factor(Z), x=RELAPSE,  group=as.factor(Z))) +
+  geom_density_ridges(aes(fill = as.factor(Z)), stat = "binline", binwidth = .5, scale = 0.95) +xlim(-1,2)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Relapse Occurence") +
+  ylab("")
+
+(p1|p2|p3|p4)/(p5|p6|p7|p8)
+```
+
+
+

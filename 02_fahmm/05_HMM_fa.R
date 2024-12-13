@@ -150,7 +150,7 @@ tmp_1 = ff %>%filter(! STUDYID %in% "WA25046")%>%filter(DAY<740)
 tmp_2 = ff %>%filter( STUDYID %in% "WA25046" )
 
 ff2= rbind(tmp_1,tmp_2)
-write.csv(ff,'interim_tables/follow_FAhmm_Relapse_ALLC.csv',row.names = FALSE) 
+write.csv(ff2,'interim_tables/follow_FAhmm_Relapse_ALLC.csv',row.names = FALSE) 
 
 ################################################################################################
 ################################################################################################
