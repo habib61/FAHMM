@@ -1,0 +1,572 @@
+---
+title: "FAHMM_outputs_S8"
+author: "Habib Ganjgahi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+options(with=1500)
+knitr::opts_chunk$set(echo = TRUE)
+options(bitmapType='cairo-png')
+```
+
+## 8 states
+
+This is an R Markdown document to plot the FAHMM model outputs
+
+```{r, echo=FALSE,include=FALSE}
+library(ggplot2) 
+library(data.table) 
+library(reshape2)
+library(pheatmap)
+library(RColorBrewer)
+library(qgraph)
+library(tidyverse)
+library(cowplot)
+library(patchwork)
+library(labelled)
+library(gtsummary)
+library(patchwork)
+library(viridis)
+library(ggridges)
+```
+
+## States mean heatmap using Composite scores: discovery sample
+
+```{r}
+follow         = read.csv('follow_FAhmm_MSPATHS_ALL_newT2_BinaryRe_OrigT2_OrigNewT2.csv')%>%
+  filter(n>1)%>%filter(!mpi%in% c('100057630','500000060','500000115','500001232','500002496'))%>%
+  mutate(Year=year(sty_date)-year(base_dt),Sem=semester(sty_date,with_year=FALSE),MONTH=12*Year+(Sem-1)*6)%>%
+  group_by(mpi)%>%mutate(deltaM=MONTH-lag(MONTH),deltaM=ifelse(is.na(deltaM),0,deltaM))%>%ungroup()
+
+
+Time              = follow$deltaM/6
+
+ss                = follow%>%group_by(mpi)%>%summarise(s=length(mpi))
+seq               = ss$s
+
+yy                = as.matrix(follow[,c("V22","V23","V24","V25")])
+yy                = scale(yy,center = TRUE,scale = TRUE)
+K        = 8
+source('FAHMM/src/02_HMM_HMM_functions.R')
+load('hmm_CTDC_S8_initKM_good.RData')
+l              = order(hmm_CTDC$mu[3,],decreasing = FALSE)
+l=c(3,6,5,8,2,7,4,1)
+hmm_CTDC$mu    = hmm_CTDC$mu[,l]
+hmm_CTDC$A     = hmm_CTDC$A[l,l]
+hmm_CTDC$pi    = hmm_CTDC$pi[l]
+hmm_CTDC$sigma = hmm_CTDC$sigma[,,l]
+
+
+Z              = ctdthmm_MultSubj_viterbi(hmm_CTDC,yy,seq,Time)
+
+spl            = split(follow[,c("mdt_avg","wst_avg","pst","t2lesvol","bpf","nt2lescn", "relapses" )], Z)
+Emp_mu_S9      = sapply(spl, function(x){colMeans(x,na.rm = TRUE)})
+Emp_mu_S9D     = round(Emp_mu_S9,2)
+print(Emp_mu_S9D)
+follow$Z8=Z
+```
+## Number of visits per state (time unit: every 6 months)
+```{r}
+table(Z)
+```
+## Transition probability matrix
+```{r}
+AD=hmm_CTDC$A
+AD[AD<.01]     = 0
+AD
+```
+
+## Demographic summary
+```{r}
+ff2<-followDis%>%dplyr::select(c("AGE","SEX","MSTYPE","DURFS","RELPST1Y","Z8"))%>%tbl_summary(by=Z8, missing = "no",
+                                                                                              label = list(AGE~'Age',SEX~'Gender',MSTYPE~'MS Type',DURFS~'Duration from First Symptom',RELPST1Y~"Number of Relapses during past year"),
+                                                                                              type = list(all_continuous() ~ "continuous2", DURFS~"continuous2",RELPST1Y~"continuous2"),
+                                                                                              statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})")) %>%modify_header(label ~ "**Variable**")
+ff2
+```
+
+## Features summary
+```{r}
+ff3<-followDis%>%dplyr::select(c("MSTYPE","EDSS","T25FWM","HPT9M","PASAT","VOLT2","NBV2","NUMGDT1","RELAPSE","Z8"))%>%tbl_summary(by=Z8, missing = "no",
+                                                                                                                                  label = list(HPT9M~'Hand Coordination',T25FWM~'Walking Time',VOLT2~'T2 lesion volume',NBV2~'Normalised brain volume',NUMGDT1~'Number of T1 Gd lesions'),
+                                                                                                                                  type = list(all_continuous() ~ "continuous2"),
+                                                                                                                                  statistic = all_continuous() ~ c("{mean} ({sd})","{median} ({p25}, {p75})","({p10}, {p90})")) %>%modify_header(label ~ "**Variable**")
+ff3
+```
+## States density plots: composite scores
+```{r,fig.width=12,fig.height=4}
+p1<-ggplot(followDis, aes(y=as.factor(Z), x=V34,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.4) +xlim(-6,1)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Physical disability") +
+  ylab("States")
+
+p2<-ggplot(followDis, aes(y=as.factor(Z), x=V35,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.17)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Subclinical burden of disease") +
+  ylab("")
+
+p3<-ggplot(followDis, aes(y=as.factor(Z), x=V36,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.05) +xlim(NA,2)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Symptomatic focal inflammation") +
+  ylab("")
+
+p4<-ggplot(followDis, aes(y=as.factor(Z), x=V37,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.1) +xlim(-5,NA)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Asymptomatic focal inflammation") +
+  ylab("")
+p1|p2|p3|p4
+```
+## States density plots: original features
+```{r,fig.width=14,fig.height=8}
+p1<-ggplot(followDis, aes(y=as.factor(Z), x=EDSS,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=1) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("EDSS (total score)") +
+  ylab("States")
+
+p2<-ggplot(followDis, aes(y=as.factor(Z), x=T25FWM,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=1) +xlim(0,50)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("25-foot times walking test (s)") +
+  ylab("")
+
+p3<-ggplot(followDis, aes(y=as.factor(Z), x=HPT9M,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=2) +xlim(0,100)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Hand Coordination (s)") +
+  ylab("")
+
+p4<-ggplot(followDis, aes(y=as.factor(Z), x=PASAT,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=2) +xlim(0,60)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("PASAT (correct answers out of 60)") +
+  ylab("")
+
+p5<-ggplot(followDis, aes(y=as.factor(Z), x=NBV2/1000000,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=.025) +
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Normalised Brain Volume (L)") +
+  ylab("States")
+
+p6<-ggplot(followDis, aes(y=as.factor(Z), x=VOLT2,  fill=as.factor(Z))) +
+  geom_density_ridges(alpha=0.6, bandwidth=2000) +xlim(NA,5e+04)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("T2 Lesion Volume") +
+  ylab("")
+
+p7<-ggplot(followDis, aes(y=as.factor(Z), x=NUMGDT1,  group=as.factor(Z))) +
+  geom_density_ridges(aes(fill = as.factor(Z)), stat = "binline", binwidth = .5, scale = 0.95) +xlim(-1,10)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Number of T1 Gd lesions") +
+  ylab("")
+
+p8<-ggplot(followDis, aes(y=as.factor(Z), x=RELAPSE,  group=as.factor(Z))) +
+  geom_density_ridges(aes(fill = as.factor(Z)), stat = "binline", binwidth = .5, scale = 0.95) +xlim(-1,2)+
+  scale_fill_viridis(discrete=TRUE) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    panel.spacing = unit(0.1, "lines"),
+    strip.text.x = element_text(size = 8)
+  ) +
+  xlab("Relapse Occurence") +
+  ylab("")
+
+(p1|p2|p3|p4)/(p5|p6|p7|p8)
+```
+
+
+
+```{r}
+mu            = hmm_CTDC$mu
+row.names(mu)=c('Physical disability','Subclinical burden of disease','Symptomatic focal inflammation','Asymptomatic focal inflammation')
+colnames(mu)=c('State 1','State 2','State 3','State 4','State 5','State 6','State 7','State 8')
+mu[c(1,3,4),]=-mu[c(1,3,4),]
+mu=mu[c(3,4,2,1),]
+
+print(round(mu,2))
+```
+```{r fig.width=10, fig.height=3}
+ll=melt(mu)
+colnames(ll)=c('y','x','fill_value')
+
+xTick =c('State 1','State 2','State 3','State 4','State 5','State 6','State 7','State 8') 
+
+
+data_heat_summary <- ll %>%
+  group_by(y) %>%
+  summarize(mx = max(fill_value), mn = min(fill_value)) 
+
+
+#possible color plates: "Spectral", "RdYlBu","RdYlGn","RdYlGn","PiYG","PRGn"
+#from https://r-graph-gallery.com/38-rcolorbrewers-palettes.html
+#https://r-graph-gallery.com/heatmap
+
+#coord_fixed()+
+#pdf save size is 3x12  
+ll %>% 
+  inner_join(data_heat_summary) %>%
+  mutate(p = (fill_value - mn ) / (mx - mn)) %>%
+  ggplot(aes(x = x, y = y)) + 
+  geom_tile(aes(fill = p), colour = "black",lwd = 1,linetype = 1) + 
+  scale_fill_distiller(palette = "Spectral",breaks=c(0,0.5,1),labels = c('Mild','Moderate','Severe')) + theme_bw()+
+  theme(axis.text.x = element_text( hjust = 1,face='bold.italic'),axis.text.y = element_text(face='bold.italic')) +
+  geom_text(aes(label = round(fill_value,2)))+scale_x_discrete(labels= xTick,expand=c(0,0))+scale_y_discrete(expand=c(0,0))+
+  guides(fill = guide_colourbar(ticks = FALSE,title=''))+xlab('')+ylab('')
+```
+
+## States mean heatmap using original variables: discovery sample
+```{r}
+xTick =c('State 1','State 2','State 3','State 4','State 5','State 6','State 7','State 8') 
+row.names(Emp_mu_S9D)=c('EDSS (total score)','25-foot times walking test (s)','Hand Coordination (s)','PASAT (correct answers out of 60)','T2 Lesion Volume (cm3)','Brain Volume (L)'
+                       ,'Number of T1 Gd lesions','Relapse probability')
+colnames(Emp_mu_S9D)=xTick
+print(round(Emp_mu_S9D,2))
+```
+```{r, fig.width=12, fig.height=4}
+#knitr::opts_chunk$set(fig.width=12, fig.height=4)
+Emp_mu_S9     = Emp_mu_S9D
+tmp           = Emp_mu_S9[8:1,]
+Emp_mu_S9[4,] = 60-Emp_mu_S9[4,]
+Emp_mu_S9[6,] = 2-Emp_mu_S9[6,]
+
+ll=melt(Emp_mu_S9[8:1,])
+colnames(ll)=c('y','x','fill_value')
+
+
+data_heat_summary <- ll %>%
+  group_by(y) %>%
+  summarize(mx = max(fill_value), mn = min(fill_value)) 
+
+
+
+
+ll2 =ll %>%  inner_join(data_heat_summary) %>% mutate(p = (fill_value - mn ) / (mx - mn))
+ll3 = melt(tmp)
+ll2$fill_value=ll3$value
+
+#save pdf size is 4x12 
+#"RdYlBu"
+ggplot(ll2,aes(x = x, y = y)) + 
+  geom_tile(aes(fill = p), colour = "black",lwd = 1,linetype = 1) + 
+  scale_fill_distiller(palette = "Spectral",breaks=c(0,0.5,1),labels = c('Mild','Moderate','Severe')) + theme_bw()+
+  theme(axis.text.x = element_text( hjust = 1,face='bold.italic'),axis.text.y = element_text(face='bold.italic')) +
+  geom_text(aes(label = round(fill_value,2)))+scale_x_discrete(labels= xTick,expand=c(0,0),guide = guide_axis(angle = 15))+scale_y_discrete(expand=c(0,0))+
+  guides(fill = guide_colourbar(ticks = FALSE,title=''))+xlab('')+ylab('')
+```
+## Transition Probability Matrix
+```{r}
+AD=hmm_CTDC$A
+colnames(AD)=c('State 1','State 2','State 3','State 4','State 5','State 6','State 7','State 8') 
+rownames(AD)=c('State 1','State 2','State 3','State 4','State 5','State 6','State 7','State 8')
+AD[AD<.01]=0
+print(round(AD,2))
+```
+## Transition Probability Matrix
+```{r}
+AD=hmm_CTDC$A
+TP1<- melt(AD)
+ colnames(AD)=c(1:8)
+#thresholding
+TP1 <- TP1[TP1$value!=0,]
+TP1 <- TP1[TP1$value>=0.03,]
+colnames(TP1) <- c("from", "to", "thickness")
+TP1 <- subset(TP1,from!=to)
+aa2=matrix(c(-5,-5,-5,-2,-2,1,1,1,12.5,10.5,8,5,14,11.5,9.5,7.5),8,2)
+qgraph(TP1, esize=5 ,edge.labels=T,label.cex=1,edge.label.cex=.5,edge.label.margin = 0.005,
+       edge.label.color='#3a338f',edge.color="#3a338f",layoutScale=c(1,1),GLratio=4, theme="Borkulo",layout = aa2,
+       groups=list(`Evolved`=c(6,7,8),`Relapse`=c(5),`Asymptomatic`=c(4),`Early`=c(1,2,3)),
+       palette='R',legend.cex=.4,cut=.03,
+       directed=TRUE, legend=TRUE,theme="Hollywood",
+       color=c('red',"yellowgreen","orange","deepskyblue2"))
+
+qgraph(TP1, esize=5 ,edge.labels=T,label.cex=1,edge.label.cex=.5,edge.label.margin = 0.005,
+       edge.label.color='#3a338f',edge.color="#3a338f",layoutScale=c(1,1),GLratio=4, theme="Borkulo",layout = aa2,legend=FALSE,
+       groups=list(`Evolved`=c(6,7,8),`Relapse`=c(5),`Asymptomatic`=c(4),`Early`=c(1,2,3)),
+       palette='R',legend.cex=.4,cut=.03,
+       directed=TRUE, legend=TRUE,theme="Hollywood",
+       color=c('red',"yellowgreen","orange","deepskyblue2"))
+```
+
+
+
+# waterfall plot for RRMS
+```{r}
+followDis$Ms=0
+followDis$Ms[followDis$Z8 %in% c(1,2,3)]=1
+followDis$Ms[followDis$Z8==4]=2
+followDis$Ms[followDis$Z8==5]=3
+followDis$Ms[followDis$Z8 %in% c(6,7,8)]=4
+followDis$Ms=factor(followDis$Ms,levels = c(1,2,3,4),labels = c('Early','Relapse','Asymptomatic','Evolved'))
+df=followDis%>%filter(MSTYPE%in%'RRMS')
+timex <- "YEAR"
+timeg <- "Z8" # or edss
+
+agg <- aggregate(as.numeric(df$Z8), by=list(df$YEARS,df$USUBJID,df$Ms), FUN=mean,na.rm=TRUE)
+agg <- agg[complete.cases(agg), ]
+names(agg)[names(agg) == 'Group.1'] <-'Time'
+names(agg)[names(agg) == 'x'] <- 'States'
+names(agg)[names(agg) == 'Group.3'] <- 'MetaStates'
+p1<-ggplot(agg, aes(Time, States,group=as.factor(Group.2), color=MetaStates))+geom_line(alpha=.1, linewidth=0.2)+theme_cowplot()+theme(legend.position="none")+xlab('Time (years)')+
+  ylab('RRMS states')
+p1
+#original code from Sam
+#p1+geom_jitter(aes(Time,States, group=as.factor(Group.2)),alpha=1/4, size=0.05, cex=0.05)
+```
+# waterfall plot for RRMS: Meta-states
+```{r}
+df=followDis%>%filter(MSTYPE%in%'RRMS')
+timex <- "YEAR"
+timeg <- "Ms" # or edss
+
+agg <- aggregate(as.numeric(df$Ms), by=list(df$YEARS,df$USUBJID,df$Ms), FUN=mean,na.rm=TRUE)
+agg <- agg[complete.cases(agg), ]
+names(agg)[names(agg) == 'Group.1'] <-'Time'
+names(agg)[names(agg) == 'x'] <- 'States'
+names(agg)[names(agg) == 'Group.3'] <- 'MetaStates'
+p1_1<-ggplot(agg, aes(Time, States,group=as.factor(Group.2), color=MetaStates))+geom_line(alpha=.1, linewidth=0.2)+theme_cowplot()+theme(legend.position="none")+xlab('Time (years)')+
+  ylab('RRMS states')
+p1_1
+#original code from Sam
+#p1+geom_jitter(aes(Time,States, group=as.factor(Group.2)),alpha=1/4, size=0.05, cex=0.05)
+```
+
+# waterfall plot for SPMS
+```{r}
+df=followDis%>%filter(MSTYPE%in%'SPMS')
+timex <- "YEAR"
+timeg <- "Z8" # or edss
+
+agg <- aggregate(as.numeric(df$Z8), by=list(df$YEARS,df$USUBJID,df$Ms), FUN=mean,na.rm=TRUE)
+agg <- agg[complete.cases(agg), ]
+names(agg)[names(agg) == 'Group.1'] <-'Time'
+names(agg)[names(agg) == 'x'] <- 'States'
+names(agg)[names(agg) == 'Group.3'] <- 'MetaStates'
+p2<-ggplot(agg, aes(Time, States,group=as.factor(Group.2), color=MetaStates))+geom_line(alpha=.1, linewidth=0.2)+theme_cowplot()+theme(legend.position="none")+xlab('Time (years)')+
+  ylab('SPMS States')
+p2
+```
+
+# waterfall plot for SPMS
+```{r}
+df=followDis%>%filter(MSTYPE%in%'SPMS')
+df2 = df%>%group_by(USUBJID)%>%summarise(M=mean(Ms))
+timex <- "YEAR"
+timeg <- "Ms" # or edss
+
+agg <- aggregate(as.numeric(df$Ms), by=list(df$MONTHN,df$USUBJID,df$Ms,df$gr), FUN=mean,na.rm=TRUE)
+agg <- agg[complete.cases(agg), ]
+names(agg)[names(agg) == 'Group.1'] <-'Time'
+names(agg)[names(agg) == 'x'] <- 'States'
+names(agg)[names(agg) == 'Group.3'] <- 'MetaStates'
+ggplot(agg, aes(Time, States,group=as.factor(Group.2), color=gr))+geom_jitter(alpha=.4,width = 0.02,height  = 0.02)+
+  geom_line(alpha=.4, linewidth=0.2)+theme_cowplot()+theme(legend.position="none")+xlab('Time (Months)')+
+  ylab('SPMS States') +
+  xlim(0,100)
+
+p2_2<-ggplot(agg, aes(Time, States,group=as.factor(Group.2), color=MetaStates))+geom_line(alpha=.1, linewidth=0.2)+theme_cowplot()+theme(legend.position="none")+xlab('Time (years)')+
+  ylab('SPMS States')
+p2_2
+```
+# waterfall plot for PPMS
+```{r}
+df=followDis%>%filter(MSTYPE%in%'PPMS')
+timex <- "YEAR"
+timeg <- "Z8" # or edss
+
+agg <- aggregate(as.numeric(df$Z8), by=list(df$YEARS,df$USUBJID,df$Ms), FUN=mean,na.rm=TRUE)
+agg <- agg[complete.cases(agg), ]
+names(agg)[names(agg) == 'Group.1'] <-'Time'
+names(agg)[names(agg) == 'x'] <- 'States'
+names(agg)[names(agg) == 'Group.3'] <- 'MetaStates'
+p3<-ggplot(agg, aes(Time, States,group=as.factor(Group.2), color=MetaStates))+geom_line(alpha=.1, linewidth=0.2)+theme_cowplot()+xlab('Time (years)')+
+  ylab('PPMS States')
+p3
+
+
+#agg <- aggregate(as.numeric(df$Z8), by=list(df$YEARS,df$USUBJID), FUN=mean,na.rm=TRUE)
+#names(agg)[names(agg) == 'Group.1'] <- input$timex
+#agg <- agg[complete.cases(agg), ]
+#names(agg)[names(agg) == 'x'] <- input$timeg
+#agg[[input$timeg]] <- round(agg[[input$timeg]], digits = 0)
+   
+#ggplot(agg, aes(agg[[input$timex]], agg[[input$timeg]],
+#    group=as.factor(Group.2), color=as.factor(agg[[input$timeg]])
+#) ) +
+#xlab(paste(input$timex)) + ylab(paste(input$timeg)) + ggtitle("Longitudinal plot") +
+#geom_line(alpha=1/4, size=0.2) + 
+#geom_jitter(aes(agg[[input$timex]], agg[[input$timeg]], group=as.factor(Group.2)),
+#    alpha=1/4, size=0.05, cex=0.05) +
+#theme(legend.position="none") + scale_y_reverse()
+```
+# combine all together
+```{r}
+#save 5x8 to pdf
+p1/p2/p3
+```
+## Transition Probability Matrix: Meta States
+```{r}
+A=as.matrix(read.csv('03_outputs/Discovery/A_Meta_Dis_S8.csv')%>%dplyr::select(-'X'))
+colnames(A)=c('Early MS','Acute Relapse','Transition','Late MS')
+rownames(A)=c('Early MS','Acute Relapse','Transition','Late MS')
+print(round(A,2))
+```
+
+```{r}
+A_Ms=as.matrix(read.csv('03_outputs/Discovery/A_Meta_Dis_S8.csv')%>%dplyr::select(-'X'))
+colnames(A_Ms)=c(1:4)
+TP1<- melt(A_Ms)
+#thresholding
+TP1 <- TP1[TP1$value!=0,]
+TP1 <- TP1[TP1$value>=0.02,]
+colnames(TP1) <- c("from", "to", "thickness")
+TP1 <- subset(TP1,from!=to)
+aa=matrix(c(-4,-2,-2,-0.2,12.5,9,14,12.5),4,2)
+#qgraph(TP1, esize=5 ,edge.labels=T,label.cex=1,edge.label.cex=.4,edge.label.margin = 0.005,
+#       edge.label.color='#3a338f',edge.color="#3a338f",layoutScale=c(1,1),GLratio=6, theme="Borkulo",layout = aa,
+#       groups=list(`Early MS`=c(1),`Acute Relapse`=c(2),`Transition`=c(3),`Late MS`=c(4)),
+#       palette='ggplot2',legend.cex=.4,cut=.03,
+#       directed=TRUE, legend=TRUE)
+
+
+#qgraph(TP1, esize=5 ,edge.labels=T,label.cex=1,edge.label.cex=.4,edge.label.margin = 0.005,
+#       edge.label.color='#3a338f',edge.color="#3a338f",layoutScale=c(1,1),GLratio=6, theme="Borkulo",layout = aa,
+#       groups=list(`Early MS`=c(1),`Acute Relapse`=c(2),`Transition`=c(3),`Late MS`=c(4)),
+#       palette='pastel',legend.cex=.4,cut=.03,
+#       directed=TRUE, legend=TRUE,theme="Hollywood",color=c("cyan3","yellowgreen","orange",'red'))
+
+
+qgraph(TP1, esize=5 ,edge.labels=T,label.cex=1,edge.label.cex=.4,edge.label.margin = 0.005,
+       edge.label.color='#3a338f',edge.color="#3a338f",layoutScale=c(1,1),GLratio=6, theme="Borkulo",layout = aa,legend=FALSE,
+       groups=list(`Early MS`=c(1),`Acute Relapse`=c(2),`Transition`=c(3),`Late MS`=c(4)),
+       palette='pastel',legend.cex=.4,cut=.03,
+       directed=TRUE, legend=TRUE,theme="Hollywood",color=c("deepskyblue2","yellowgreen","orange",'red'),labels=c('Early','Relapse','Asymptomatic','Evovled'))
+
+
+```
+
+
+# Meta States mean heatmap using original variables: discovery sample
+```{r}
+##########meta states
+Emp_Meta_S9 = as.matrix(read.csv('03_outputs/Discovery/Dis_metaMean_s8.csv')%>%dplyr::select(-'X'))
+xTick=c('Early','Acute Relapse','Asymptomatic','Evolved')
+colnames(Emp_Meta_S9)=xTick
+row.names(Emp_Meta_S9)=c('EDSS (total score)','25-foot times walking test (s)','Hand Coordination (s)','PASAT (correct answers out of 60)','T2 Lesion Volume (cm3)','Brain Volume (L)'
+                         ,'Number of T1 Gd lesions','Relapse probability')
+
+#colnames(Emp_Meta_S9)=xTick
+print(round(Emp_Meta_S9,2))
+```
+
+```{r,fig.width=10, fig.height=4}
+tmp           = Emp_Meta_S9[8:1,]
+Emp_Meta_S9[4,] = 60-Emp_Meta_S9[4,]
+Emp_Meta_S9[6,] = 2-Emp_Meta_S9[6,]
+
+ll=melt(Emp_Meta_S9[8:1,])
+colnames(ll)=c('y','x','fill_value')
+
+
+data_heat_summary <- ll %>%
+  group_by(y) %>%
+  summarize(mx = max(fill_value), mn = min(fill_value)) 
+
+ll2 =ll %>%  inner_join(data_heat_summary) %>% mutate(p = (fill_value - mn ) / (mx - mn))
+ll3 = melt(tmp)
+ll2$fill_value=ll3$value
+
+#save pdf size is 4x12 or 4x8
+#"RdYlBu"
+ggplot(ll2,aes(x = x, y = y)) + 
+  geom_tile(aes(fill = p), colour = "black",lwd = 1,linetype = 1) + 
+  scale_fill_distiller(palette = "Spectral",breaks=c(0,0.5,1),labels = c('Mild','Moderate','Severe')) + theme_bw()+
+  theme(axis.text.x = element_text( hjust = 1,face='bold.italic'),axis.text.y = element_text(face='bold.italic')) +
+  geom_text(aes(label = round(fill_value,2)))+scale_y_discrete(expand=c(0,0))+
+  guides(fill = guide_colourbar(ticks = FALSE,title=''))+xlab('')+ylab('')+
+  scale_x_discrete(labels= xTick,expand=c(0,0),guide = guide_axis(angle = 15))
+```
